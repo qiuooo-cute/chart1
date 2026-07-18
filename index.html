@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>情感轮盘</title>
+<style>
+ * { margin: 0; padding: 0; box-sizing: border-box; }
+ html, body {
+   width: 100%;
+   height: 100%;
+   overflow: hidden;
+   background: transparent;
+   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+ }
+ .wheel-container {
+   display: flex;
+   flex-direction: row;
+   align-items: center;
+   justify-content: center;
+   gap: 24px;
+   width: 100%;
+   height: 100%;
+   min-height: 200px;
+   background: transparent;
+   padding: 10px;
+   user-select: none;
+ }
+ .wheel-wrapper {
+   flex: 0 0 auto;
+   width: 60%;
+   max-width: 400px;
+   aspect-ratio: 1/1;
+   touch-action: none;
+ }
+ canvas {
+   display: block;
+   width: 100%;
+   height: 100%;
+   background: transparent !important;
+   cursor: grab;
+   touch-action: none;
+ }
+ canvas:active { cursor: grabbing; }
+ .info-panel {
+   flex: 1 1 auto;
+   min-width: 100px;
+   background: transparent !important;
+   text-align: left;
+   color: #ffffff;
+   padding: 8px 0;
+ }
+ .info-panel .title {
+   font-weight: 700;
+   font-size: 28px;
+   color: #ffffff;
+   letter-spacing: 1px;
+   line-height: 1.2;
+   margin-bottom: 6px;
+ }
+ .info-panel .desc {
+   font-weight: 400;
+   font-size: 16px;
+   color: rgba(255, 255, 255, 0.85);
+   line-height: 1.5;
+   margin-top: 2px;
+ }
+ .info-panel .placeholder {
+   font-weight: 400;
+   font-size: 16px;
+   color: rgba(255, 255, 255, 0.4);
+ }
+ @media (max-width: 550px) {
+   .wheel-container {
+     flex-direction: column;
+     align-items: center;
+     gap: 16px;
+   }
+   .wheel-wrapper { width: 80%; }
+   .info-panel {
+     text-align: center;
+     width: 100%;
+     max-width: 400px;
+   }
+   .info-panel .title { font-size: 24px; }
+   .info-panel .desc { font-size: 15px; }
+ }
+</style>
+</head>
+<body>
+<div class="wheel-container">
+ <div class="wheel-wrapper">
+   <canvas id="wheelCanvas" width="400" height="400"></canvas>
+ </div>
+ <div class="info-panel" id="infoPanel">
+   <div class="placeholder">← 拖动轮盘</div>
+ </div>
+</div>
+
+<script>
+(function() {
+ 'use strict';
+
+ function init() {
+   var canvas = document.getElementById('wheelCanvas');
+   var infoPanel = document.getElementById('infoPanel');
+   if (!canvas || !infoPanel) {
+     // 如果 DOM 还没准备好，稍后再试
+     requestAnimationFrame(init);
+     return;
+   }
+
+   var ctx = canvas.getContext('2d');
+
+   var sectors = [
+     { label: '情感代偿', desc: '社会原子化 · 寻求情感替代' },
+     { label: '情感计算', desc: '情感计算 · AI模拟共情' },
+     { label: '商品化产出', desc: '情感资本 · 商品化变现' },
+     { label: '文化养成', desc: '二次元 · 养成系文化' }
+   ];
+
+   var colors = ['#80ECFF', '#FFA1FF', '#80ECFF', '#FFA1FF'];
+
+   var W = 400, H = 400;
+   var cx = W/2, cy = H/2;
+   var radius = 170;
+
+   var rotation = 0;
+   var isDragging = false;
+   var lastAngle = 0;
+   var animating = false;
+   var animTarget = 0;
+   var animStart = 0;
+   var DURATION = 300;
+
+   function getSectorIndex(rot) {
+     var angle = (-rot) % (2 * Math.PI);
+     if (angle < 0) angle += 2 * Math.PI;
+     var idx = Math.floor(angle / (Math.PI / 2));
+     if (idx >= 4) idx = 3;
+     return idx;
+   }
+
+   function updateInfo(rot) {
+     var idx = getSectorIndex(rot);
+     var data = sectors[idx];
+     infoPanel.innerHTML = '<div class="title">' + data.label + '</div><div class="desc">' + data.desc + '</div>';
+   }
+
+   function draw(rot) {
+     ctx.clearRect(0, 0, W, H);
+
+     for (var i = 0; i < 4; i++) {
+       var start = i * Math.PI/2 + rot;
+       var end = start + Math.PI/2;
+       ctx.beginPath();
+       ctx.moveTo(cx, cy);
+       ctx.arc(cx, cy, radius, start, end);
+       ctx.closePath();
+       ctx.fillStyle = colors[i];
+       ctx.fill();
+       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+       ctx.lineWidth = 1.5;
+       ctx.stroke();
+
+       var centerAngle = start + Math.PI/4;
+       var textRadius = radius * 0.65;
+       var tx = cx + Math.cos(centerAngle) * textRadius;
+       var ty = cy + Math.sin(centerAngle) * textRadius;
+
+       ctx.save();
+       ctx.shadowColor = 'rgba(0,0,0,0.4)';
+       ctx.shadowBlur = 8;
+       ctx.textAlign = 'center';
+       ctx.textBaseline = 'middle';
+       ctx.font = 'bold 18px "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif';
+       ctx.fillStyle = '#FFFFFF';
+       ctx.fillText(sectors[i].label, tx, ty);
+       ctx.restore();
+     }
+
+     // 中心圆点
+     ctx.beginPath();
+     ctx.arc(cx, cy, 12, 0, 2 * Math.PI);
+     ctx.fillStyle = '#1A2A3A';
+     ctx.fill();
+     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+     ctx.lineWidth = 2;
+     ctx.stroke();
+
+     // 指示箭头
+     var tipX = cx + radius - 6;
+     var tipY = cy;
+     var baseX = cx + radius + 16;
+     var baseY1 = cy - 14;
+     var baseY2 = cy + 14;
+     ctx.beginPath();
+     ctx.moveTo(tipX, tipY);
+     ctx.lineTo(baseX, baseY1);
+     ctx.lineTo(baseX, baseY2);
+     ctx.closePath();
+     ctx.fillStyle = '#FFFFFF';
+     ctx.shadowColor = 'rgba(0,0,0,0.3)';
+     ctx.shadowBlur = 10;
+     ctx.fill();
+     ctx.shadowBlur = 0;
+     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+     ctx.lineWidth = 1.5;
+     ctx.stroke();
+     ctx.beginPath();
+     ctx.arc(tipX, tipY, 4, 0, 2 * Math.PI);
+     ctx.fillStyle = '#FFFFFF';
+     ctx.fill();
+   }
+
+   function getAngleFromEvent(e) {
+     var rect = canvas.getBoundingClientRect();
+     var scaleX = canvas.width / rect.width;
+     var scaleY = canvas.height / rect.height;
+     var clientX, clientY;
+     if (e.touches) {
+       clientX = e.touches[0].clientX;
+       clientY = e.touches[0].clientY;
+     } else {
+       clientX = e.clientX;
+       clientY = e.clientY;
+     }
+     var x = (clientX - rect.left) * scaleX;
+     var y = (clientY - rect.top) * scaleY;
+     var dx = x - cx;
+     var dy = y - cy;
+     return Math.atan2(dy, dx);
+   }
+
+   function startDrag(e) {
+     if (animating) return;
+     isDragging = true;
+     lastAngle = getAngleFromEvent(e);
+     canvas.style.cursor = 'grabbing';
+     e.preventDefault();
+   }
+
+   function onDrag(e) {
+     if (!isDragging) return;
+     var currentAngle = getAngleFromEvent(e);
+     var delta = currentAngle - lastAngle;
+     if (delta > Math.PI) delta -= 2 * Math.PI;
+     if (delta < -Math.PI) delta += 2 * Math.PI;
+     rotation += delta;
+     lastAngle = currentAngle;
+     draw(rotation);
+     updateInfo(rotation);
+     e.preventDefault();
+   }
+
+   function endDrag(e) {
+     if (!isDragging) return;
+     isDragging = false;
+     canvas.style.cursor = 'grab';
+     snapToSector();
+     e.preventDefault();
+   }
+
+   function snapToSector() {
+     var idx = getSectorIndex(rotation);
+     var target = -(idx * Math.PI/2 + Math.PI/4);
+     target = ((target % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+     var diff = target - rotation;
+     if (diff > Math.PI) diff -= 2*Math.PI;
+     if (diff < -Math.PI) diff += 2*Math.PI;
+     var finalTarget = rotation + diff;
+
+     animStart = rotation;
+     animTarget = finalTarget;
+     var startTime = performance.now();
+     animating = true;
+
+     function animateStep(time) {
+       var elapsed = time - startTime;
+       var t = Math.min(elapsed / DURATION, 1);
+       var ease = 1 - Math.pow(1 - t, 3);
+       var currentRot = animStart + (animTarget - animStart) * ease;
+       rotation = currentRot;
+       draw(rotation);
+       updateInfo(rotation);
+       if (t < 1) {
+         requestAnimationFrame(animateStep);
+       } else {
+         rotation = animTarget;
+         draw(rotation);
+         updateInfo(rotation);
+         animating = false;
+       }
+     }
+     requestAnimationFrame(animateStep);
+   }
+
+   // 事件绑定
+   canvas.addEventListener('mousedown', startDrag);
+   window.addEventListener('mousemove', onDrag);
+   window.addEventListener('mouseup', endDrag);
+   canvas.addEventListener('touchstart', startDrag, { passive: false });
+   window.addEventListener('touchmove', onDrag, { passive: false });
+   window.addEventListener('touchend', endDrag, { passive: false });
+   canvas.addEventListener('dragstart', function(e) { e.preventDefault(); });
+
+   // 初始绘制
+   draw(rotation);
+   updateInfo(rotation);
+ }
+
+ // 确保 DOM 加载完成后执行
+ if (document.readyState === 'loading') {
+   document.addEventListener('DOMContentLoaded', init);
+ } else {
+   init();
+ }
+})();
+</script>
+</body>
+</html>
